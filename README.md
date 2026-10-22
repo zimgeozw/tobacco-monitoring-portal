@@ -28,7 +28,7 @@ No Composer, Node or build step is needed. MapLibre and Chart.js are already inc
 3. **Git:** cPanel → Git™ Version Control → Create.
    - Clone URL: `git@github.com:zimgeozw/tobacco-monitoring-portal.git`. The repo is private, so first add the cPanel SSH public key as a **Deploy key** in GitHub → repo Settings → Deploy keys.
    - Repository path: `/home/zimgeoco/repositories/tobacco-monitoring-portal`
-4. **Deploy path:** check that `DEPLOYPATH` in `.cpanel.yml` matches the document root of `timb.zimgeo.co.zw`, shown in cPanel → Domains. The default is `/home/zimgeoco/timb.zimgeo.co.zw/`.
+4. **Deploy path:** check that `DEPLOYPATH` in `.cpanel.yml` matches the document root of `timb.zimgeo.co.zw`, shown in cPanel → Domains. The default is `/home/zimgeoco/public_html/timb.zimgeo.co.zw/`.
 5. cPanel → Git → Manage → **Pull or Deploy** → *Deploy HEAD Commit*.
 6. Open **https://timb.zimgeo.co.zw/install.php** and enter the database, administrator and SMTP details. This writes `config.php`, which is never committed to Git, and creates the tables. The installer disables itself afterwards.
 7. Sign in, go to **Administration → Activity & email**, and send a test email.
