@@ -8,3 +8,7 @@ deployment:
     - /usr/bin/rsync -a --delete --exclude='.git' --exclude='.cpanel.yml' --exclude='config.php' --exclude='storage/' --exclude='.well-known/' --exclude='cgi-bin/' --exclude='error_log' ./ $DEPLOYPATH
     - /bin/mkdir -p ${DEPLOYPATH}storage/uploads ${DEPLOYPATH}storage/cache ${DEPLOYPATH}storage/logs
     - /bin/cp -f storage/.htaccess ${DEPLOYPATH}storage/.htaccess
+    # Fix permissions on every deploy (folders 755, files 644)
+    - /bin/chmod 755 $DEPLOYPATH
+    - /bin/find $DEPLOYPATH -type d -not -path '*/.well-known*' -exec /bin/chmod 755 {} +
+    - /bin/find $DEPLOYPATH -type f -not -name 'config.php' -not -path '*/.well-known*' -exec /bin/chmod 644 {} +
