@@ -27,6 +27,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'You cannot remove your own administrator role.');
             redirect('admin/users.php?edit=' . $id);
         }
+        $pwMode = post('pw_mode') === 'set' ? 'set' : 'invite';
+        $newPw = (string)($_POST['password'] ?? '');
+        $setPw = ($id && $newPw !== '') || (!$id && $pwMode === 'set');
+        if ($setPw) {
+            if ($err = validate_password($newPw)) {
+                flash('error', $err);
+                redirect('admin/users.php?' . ($id ? 'edit=' . $id : 'new=1'));
+            }
+            if ($newPw !== (string)($_POST['password2'] ?? '')) {
+                flash('error', 'The two passwords do not match.');
+                redirect('admin/users.php?' . ($id ? 'edit=' . $id : 'new=1'));
+            }
+        }
         $vals = [$name, $email, mb_substr((string)post('organisation'), 0, 160), mb_substr((string)post('phone'), 0, 40), $role,
             isset($_POST['can_download']) ? 1 : 0, $access, isset($_POST['notify_new_season']) ? 1 : 0];
         if ($id) {
@@ -36,16 +49,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 q('UPDATE users SET session_version = session_version + 1 WHERE id = ?', [$id]);
             }
             audit('user_updated', $email);
-            flash('success', 'User updated.');
+            $msg = 'User updated.';
+            if ($setPw) {
+                q("UPDATE users SET password_hash = ?, status = IF(status = 'disabled', 'disabled', 'active'), session_version = session_version + 1 WHERE id = ?",
+                    [password_hash($newPw, PASSWORD_DEFAULT), $id]);
+                q('UPDATE user_tokens SET used_at = NOW() WHERE user_id = ? AND used_at IS NULL', [$id]);
+                audit('password_set_by_admin', $email);
+                $msg = 'User updated and password changed. They have been signed out of other sessions.';
+                if (isset($_POST['email_login'])) {
+                    $msg .= send_login_details(q1('SELECT * FROM users WHERE id = ?', [$id]), $newPw, false) ? ' Login details emailed.' : ' (The email could not be sent.)';
+                }
+            }
+            flash('success', $msg);
         } else {
             q("INSERT INTO users (name, email, organisation, phone, role, can_download, allowed_districts, notify_new_season, status, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,'invited',?,NOW())",
                 array_merge($vals, [$admin['id']]));
             $u = q1('SELECT * FROM users WHERE id = ?', [db()->lastInsertId()]);
-            $ok = send_invite($u);
-            audit('user_invited', $email);
-            flash($ok ? 'success' : 'error', $ok
-                ? "Invitation emailed to $email. They will set their own password."
-                : "User created, but the invitation email could not be sent. Check email settings under Activity & email, then use “Resend invite”.");
+            if ($setPw) {
+                q("UPDATE users SET password_hash = ?, status = 'active' WHERE id = ?", [password_hash($newPw, PASSWORD_DEFAULT), $u['id']]);
+                audit('user_created', $email . ' (password set by admin)');
+                $msg = "User $email created with the password you set — they can sign in now and change it under My account.";
+                if (isset($_POST['email_login'])) {
+                    $msg .= send_login_details($u, $newPw, true) ? ' Login details emailed.' : ' (The email could not be sent — share the password yourself.)';
+                }
+                flash('success', $msg);
+            } else {
+                $ok = send_invite($u);
+                audit('user_invited', $email);
+                flash($ok ? 'success' : 'error', $ok
+                    ? "Invitation emailed to $email. They will set their own password."
+                    : "User created, but the invitation email could not be sent. Check email settings under Activity & email, then use “Resend invite”.");
+            }
         }
         redirect('admin/users.php');
     }
@@ -105,7 +139,7 @@ page_header('Users', 'admin-users');
 ?>
 <div class="container">
   <div class="page-head">
-    <div><h1 class="page-title">Users</h1><p class="muted">Add people by email. They receive an invitation to set their own password, and can reset it themselves later.</p></div>
+    <div><h1 class="page-title">Users</h1><p class="muted">Add people by email. Either send them an invitation to choose their own password, or set a password for them. You can change any user’s password or delete them later.</p></div>
     <a class="btn primary" href="<?= url('admin/users.php?new=1') ?>">+ Add user</a>
   </div>
 
@@ -139,8 +173,23 @@ page_header('Users', 'admin-users');
           <?php endforeach; ?>
         </div>
       </fieldset>
+      <fieldset class="radios span2"><legend>Password</legend>
+        <?php if (!$edit): ?>
+          <label class="check"><input type="radio" name="pw_mode" value="invite" checked onchange="pwToggle()"> <span><strong>Send invitation email</strong> — the user chooses their own password</span></label>
+          <label class="check"><input type="radio" name="pw_mode" value="set" onchange="pwToggle()"> <span><strong>Set the password now</strong> — the user can sign in straight away and change it later</span></label>
+        <?php else: ?>
+          <p class="muted small" style="margin:0">Leave blank to keep the current password. Setting a new one activates the account and signs the user out of other devices.</p>
+        <?php endif; ?>
+        <div class="row2 pw-fields" id="pwFields" <?= $edit ? '' : 'hidden' ?>>
+          <label>New password <input type="password" name="password" minlength="8" autocomplete="new-password" placeholder="<?= $edit ? 'Leave blank to keep' : 'At least 8 characters, letters + a number' ?>"></label>
+          <label>Confirm password <input type="password" name="password2" minlength="8" autocomplete="new-password"></label>
+          <label class="check span2"><input type="checkbox" name="email_login"> <span>Email the sign-in details (including this password) to the user</span></label>
+          <button type="button" class="btn sm ghost" onclick="genPw()">Generate a password</button>
+          <code id="genOut" hidden></code>
+        </div>
+      </fieldset>
       <div class="span2 actions">
-        <button class="btn primary" type="submit"><?= $edit ? 'Save changes' : 'Add user &amp; send invitation' ?></button>
+        <button class="btn primary" type="submit"><?= $edit ? 'Save changes' : 'Add user' ?></button>
         <a class="btn ghost" href="<?= url('admin/users.php') ?>">Cancel</a>
       </div>
     </form>
@@ -170,10 +219,10 @@ page_header('Users', 'admin-users');
               <form method="post"><?= csrf_field() ?><input type="hidden" name="id" value="<?= $u['id'] ?>">
                 <?php if ($u['status'] === 'disabled'): ?>
                   <button class="btn sm" name="action" value="enable">Enable</button>
-                  <button class="btn sm danger" name="action" value="delete" onclick="return confirm('Delete <?= e($u['name']) ?> permanently?')">Delete</button>
                 <?php else: ?>
                   <button class="btn sm ghost" name="action" value="disable">Disable</button>
                 <?php endif; ?>
+                <button class="btn sm danger" name="action" value="delete" onclick="return confirm('Delete <?= e(addslashes($u['name'])) ?> permanently? This cannot be undone.')">Delete</button>
               </form>
             <?php endif; ?>
           </td>
@@ -183,4 +232,18 @@ page_header('Users', 'admin-users');
     </table>
   </section>
 </div>
+<script>
+function pwToggle() {
+  var set = document.querySelector('input[name=pw_mode][value=set]');
+  var f = document.getElementById('pwFields');
+  if (set && f) { f.hidden = !set.checked; f.querySelectorAll('input[type=password]').forEach(function (i) { i.required = set.checked; }); }
+}
+function genPw() {
+  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789', a = new Uint32Array(10), p = '';
+  crypto.getRandomValues(a); a.forEach(function (x) { p += chars[x % chars.length]; });
+  p = p.slice(0, 8) + (2 + a[0] % 8) + p.slice(8);
+  document.querySelectorAll('#pwFields input[type=password]').forEach(function (i) { i.value = p; });
+  var o = document.getElementById('genOut'); o.textContent = p; o.hidden = false;
+}
+</script>
 <?php page_footer();

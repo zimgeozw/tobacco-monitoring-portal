@@ -178,6 +178,20 @@ function send_reset(array $u): bool
     return send_mail($u['email'], $u['name'], 'Reset your password — ' . app_name(), $body);
 }
 
+/** Email sign-in details when an admin has set the password. */
+function send_login_details(array $u, string $password, bool $isNew): bool
+{
+    $link = abs_url('login.php');
+    $body = '<p>Dear ' . e($u['name']) . ',</p>'
+        . '<p>' . ($isNew ? 'An account has been created for you on' : 'Your password has been changed on') . ' the <strong>' . e(app_name()) . '</strong>.</p>'
+        . '<table cellpadding="6" style="border-collapse:collapse;font-size:14px;margin:10px 0">'
+        . '<tr><td style="color:#6b7280">Email</td><td><strong>' . e($u['email']) . '</strong></td></tr>'
+        . '<tr><td style="color:#6b7280">Password</td><td><strong style="font-family:monospace">' . e($password) . '</strong></td></tr></table>'
+        . email_button($link, 'Sign in')
+        . '<p>Please change this password after signing in, under <em>My account</em>.</p>';
+    return send_mail($u['email'], $u['name'], ($isNew ? 'Your account on the ' : 'Your new password for the ') . app_name(), $body);
+}
+
 /** Seasons visible to the current user. */
 function visible_seasons(): array
 {
