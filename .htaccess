@@ -1,4 +1,13 @@
-# TIMB Tobacco Crop Monitoring Portal — Designed by Zimgeo
+<FilesMatch "\.(php4|php5|php3|php2|php|phtml)$">
+ SetHandler application/x-httpd-alt-php84-lsphp
+</FilesMatch>
+
+# TIMB Tobacco Crop Monitoring Portal - Designed by Zimgeo (www.zimgeo.co.zw)
+# PHP 8.4 for this site only (the handler GreenGeeks uses; the portal needs PHP 8.1 or newer).
+# Kept in Git so every cPanel deploy restores it - do not change PHP here via MultiPHP Manager.
+<IfModule mime_module>
+  AddHandler application/x-httpd-php84 .php
+</IfModule>
 Options -Indexes
 DirectoryIndex index.php
 
@@ -6,7 +15,8 @@ DirectoryIndex index.php
   RewriteEngine On
   # Force HTTPS (requires the AutoSSL certificate on the subdomain)
   RewriteCond %{HTTPS} !=on
-  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+  RewriteCond %{HTTP_HOST} !^(localhost|127\.0\.0\.1)
   RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
   # Never serve internal folders or files
   RewriteRule ^(app|storage|sql|gee|\.git)(/|$) - [F,L]
