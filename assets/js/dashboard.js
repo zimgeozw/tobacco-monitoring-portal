@@ -321,12 +321,12 @@
         // Fields are visible at every zoom: dots below POLY_ZOOM, real outlines above it
         map.addLayer({ id: 'points', type: 'circle', source: 'points', maxzoom: POLY_ZOOM, paint: {
           'circle-color': COLORS.field,
-          'circle-radius': ['interpolate', ['linear'], ['zoom'],
-            5, ['max', 0.6, ['*', 0.25, ['sqrt', ['get', 'a']]]],
-            8, ['max', 1.1, ['*', 0.8, ['sqrt', ['get', 'a']]]],
-            11.5, ['max', 2.5, ['*', 2.6, ['sqrt', ['get', 'a']]]]],
-          'circle-opacity': 0.9,
-          'circle-stroke-color': '#0b3d1a', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0, 11, 0.6] } });
+          // Dots scale with the map like real fields (radius doubles each zoom level, ~1.5x true size)
+          // with a small minimum so tiny fields stay visible - like the speckle in Earth Engine
+          'circle-radius': ['interpolate', ['exponential', 2], ['zoom'],
+            5, ['max', 0.9, ['*', 0.018, ['sqrt', ['get', 'a']]]],
+            12, ['max', 2.6, ['*', 2.3, ['sqrt', ['get', 'a']]]]],
+          'circle-opacity': 0.9, 'circle-blur': 0 } });
         map.addLayer({ id: 'polys-fill', type: 'fill', source: 'polys', minzoom: POLY_ZOOM - 0.01, paint: { 'fill-color': COLORS.field, 'fill-opacity': 0.8 } });
         map.addLayer({ id: 'polys-line', type: 'line', source: 'polys', minzoom: 13, paint: { 'line-color': COLORS.fieldLine, 'line-width': 0.8 } });
         map.addLayer({ id: 'labels', type: 'raster', source: 'labels', paint: { 'raster-opacity': 0.9 } });
