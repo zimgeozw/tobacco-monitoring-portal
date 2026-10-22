@@ -1,0 +1,10 @@
+---
+# cPanel → Git™ Version Control → "Deploy HEAD Commit" copies the app to the
+# subdomain's document root. Check the path in cPanel → Domains (timb.zimgeo.co.zw)
+# and change DEPLOYPATH below if it differs.
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/zimgeoco/timb.zimgeo.co.zw/
+    - /usr/bin/rsync -a --delete --exclude='.git' --exclude='.cpanel.yml' --exclude='config.php' --exclude='storage/' ./ $DEPLOYPATH
+    - /bin/mkdir -p ${DEPLOYPATH}storage/uploads ${DEPLOYPATH}storage/cache ${DEPLOYPATH}storage/logs
+    - /bin/cp -f storage/.htaccess ${DEPLOYPATH}storage/.htaccess
