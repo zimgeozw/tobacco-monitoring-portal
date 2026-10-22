@@ -208,6 +208,31 @@ Export.table.toDrive({
   selectors: ['season', 'class', 'lon', 'lat']
 });
 
+// 4d. Season imagery basemap for the portal (optional, run once per season)
+// Exports the same cloud-masked Sentinel-2 composite used for classification as
+// web-map tiles, so the portal shows imagery from exactly these dates.
+// Needs a Google Cloud Storage bucket in the Earth Engine Cloud project.
+// After the task finishes, paste this address into Administration → Seasons →
+// "Season imagery tiles":
+//   https://storage.googleapis.com/<BUCKET>/timb/<SEASON>/{z}/{x}/{y}
+var BASEMAP_BUCKET = '';          // e.g. 'zimgeo-timb-tiles' — leave empty to skip
+var BASEMAP_MAX_ZOOM = 15;        // 15 ≈ 4.8 m/pixel; Sentinel-2 is 10 m, so 15 is plenty
+if (BASEMAP_BUCKET) {
+  var basemap = composite.visualize({bands: ['B4', 'B3', 'B2'], min: 0.02, max: 0.25, gamma: 1.1});
+  Export.map.toCloudStorage({
+    image: basemap,
+    description: 'Tobacco_SeasonImagery_' + SEASON.replace('-', '_'),
+    bucket: BASEMAP_BUCKET,
+    path: 'timb/' + SEASON,
+    fileFormat: 'auto',
+    minZoom: 6,
+    maxZoom: BASEMAP_MAX_ZOOM,
+    region: region.bounds(),
+    writePublicTiles: true,
+    skipEmptyTiles: true
+  });
+}
+
 // ============================================================
 // 5. QUICK VISUAL CHECK
 // ============================================================

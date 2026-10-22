@@ -37,6 +37,38 @@ require_once __DIR__ . '/layout.php';
 if (PHP_SAPI !== 'cli') {
     start_session();
 }
+if ($GLOBALS['__config'] !== null) {
+    ensure_schema();
+}
+
+/**
+ * Lightweight migrations for portals installed before a schema change.
+ * A flag file in storage/cache records the applied version so this runs once.
+ */
+function ensure_schema(): void
+{
+    $version = 2;
+    $flag = STORAGE . '/cache/schema_v' . $version . '.flag';
+    if (is_file($flag)) {
+        return;
+    }
+    try {
+        $cols = array_column(q('SHOW COLUMNS FROM seasons')->fetchAll(), 'Field');
+        $add = [
+            'basemap_url' => 'VARCHAR(500) NULL',
+            'basemap_maxzoom' => 'TINYINT UNSIGNED NULL',
+            'default_view' => 'VARCHAR(120) NULL',
+        ];
+        foreach ($add as $col => $def) {
+            if (!in_array($col, $cols, true)) {
+                db()->exec("ALTER TABLE seasons ADD COLUMN $col $def");
+            }
+        }
+        @file_put_contents($flag, date('c'));
+    } catch (Throwable $e) {
+        error_log('ensure_schema: ' . $e->getMessage());
+    }
+}
 
 /* ------------------------------------------------------------------ */
 /* Config & paths                                                       */

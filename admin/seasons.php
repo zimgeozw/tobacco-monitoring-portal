@@ -21,18 +21,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', "A season with code $code already exists.");
             redirect('admin/seasons.php?' . ($id ? 'edit=' . $id : 'new=1'));
         }
+        $basemap = trim((string)post('basemap_url'));
+        if ($basemap !== '' && (!preg_match('#^https://#', $basemap) || strpos($basemap, '{z}') === false || strpos($basemap, '{x}') === false || strpos($basemap, '{y}') === false)) {
+            flash('error', 'The season imagery address must start with https:// and contain {z}, {x} and {y}.');
+            redirect('admin/seasons.php?' . ($id ? 'edit=' . $id : 'new=1'));
+        }
+        $maxz = (int)post('basemap_maxzoom') ?: null;
         $vals = [$code, $title, (string)post('description'), (string)post('province') ?: 'Mashonaland West',
-            post('start_date') ?: null, post('end_date') ?: null, $bench];
+            post('start_date') ?: null, post('end_date') ?: null, $bench, $basemap ?: null, $maxz];
         if ($id) {
             $old = q1('SELECT * FROM seasons WHERE id = ?', [$id]);
-            q('UPDATE seasons SET code=?, title=?, description=?, province=?, start_date=?, end_date=?, yield_benchmark_t_ha=?, updated_at=NOW() WHERE id=?', array_merge($vals, [$id]));
+            q('UPDATE seasons SET code=?, title=?, description=?, province=?, start_date=?, end_date=?, yield_benchmark_t_ha=?, basemap_url=?, basemap_maxzoom=?, updated_at=NOW() WHERE id=?', array_merge($vals, [$id]));
             if ($old && abs((float)$old['yield_benchmark_t_ha'] - $bench) > 0.0001) {
                 recalc_yield($id);
                 flash('info', 'Yield benchmark changed — estimated yields were recalculated for all fields.');
             }
             audit('season_updated', $title);
         } else {
-            q('INSERT INTO seasons (code, title, description, province, start_date, end_date, yield_benchmark_t_ha, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,NOW())',
+            q('INSERT INTO seasons (code, title, description, province, start_date, end_date, yield_benchmark_t_ha, basemap_url, basemap_maxzoom, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,NOW())',
                 array_merge($vals, [$admin['id']]));
             $id = (int)db()->lastInsertId();
             audit('season_created', $title);
@@ -100,7 +106,7 @@ page_header('Seasons', 'admin-seasons');
   </div>
 
 <?php if ($edit || $isNew):
-    $s = $edit ?: ['id' => 0, 'code' => '', 'title' => '', 'description' => '', 'province' => 'Mashonaland West', 'start_date' => '', 'end_date' => '', 'yield_benchmark_t_ha' => '2.2'];
+    $s = $edit ?: ['id' => 0, 'code' => '', 'title' => '', 'description' => '', 'province' => 'Mashonaland West', 'start_date' => '', 'end_date' => '', 'yield_benchmark_t_ha' => '2.2', 'basemap_url' => '', 'basemap_maxzoom' => 15, 'default_view' => null];
 ?>
   <section class="card">
     <h2><?= $edit ? 'Edit season' : 'New season' ?></h2>
@@ -118,6 +124,10 @@ page_header('Seasons', 'admin-seasons');
       <label>Imagery end date <input type="date" name="end_date" value="<?= e($s['end_date']) ?>"></label>
       <label>Yield benchmark (t/ha) <input type="number" step="0.01" min="0.1" name="yield_benchmark_t_ha" value="<?= e((float)$s['yield_benchmark_t_ha']) ?>" required>
         <small class="muted">Estimated yield = area × benchmark. Changing it recalculates all fields.</small></label>
+      <label class="span2">Season imagery tiles <small class="muted">(optional — Sentinel-2 basemap for this season's dates, exported from Earth Engine; see gee/ script)</small>
+        <input name="basemap_url" value="<?= e($s['basemap_url']) ?>" placeholder="https://storage.googleapis.com/YOUR-BUCKET/timb/2025-26/{z}/{x}/{y}" maxlength="500"></label>
+      <label>Imagery max zoom <input type="number" name="basemap_maxzoom" min="8" max="18" value="<?= e($s['basemap_maxzoom'] ?: 15) ?>"></label>
+      <label>Default map view <input value="<?= $s['default_view'] ? e(implode(', ', array_map(fn($k, $v) => "$k $v", array_keys(json_decode($s['default_view'], true)), json_decode($s['default_view'], true)))) : 'Whole season (set from the dashboard map)' ?>" disabled></label>
       <label class="span2">Notes for users <small class="muted">(optional, shown under the heading)</small>
         <textarea name="description" rows="2" maxlength="600" placeholder="e.g. Preliminary results — ground verification in progress."><?= e($s['description']) ?></textarea></label>
       <div class="span2 actions">

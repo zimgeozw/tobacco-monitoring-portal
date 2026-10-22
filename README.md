@@ -45,6 +45,9 @@ Push to `main` on GitHub. Then in cPanel → Git → Manage, click **Update from
 4. **Upload data**: drop the Fields, RunInfo and (optional) TrainingPoints files. Keep the page open until each file shows ✓.
 5. Preview the season on the dashboard (it is a draft, visible to admins only), then **Publish**. Users who opted in receive an email.
 
+6. **Map default view:** zoom and pan the dashboard map to the area users should see first, then click **Set as default view**. This is saved for each season.
+7. **Season imagery (optional):** set `BASEMAP_BUCKET` in the GEE script to export the season's Sentinel-2 composite as map tiles to Google Cloud Storage. Then paste `https://storage.googleapis.com/<bucket>/timb/<season>/{z}/{x}/{y}` into Seasons → *Season imagery tiles*. The map then opens on imagery from exactly the season's dates, with Esri satellite and Streets still available.
+
 Notes:
 - Each field is assigned to its **current district** (geoBoundaries ADM2) from its centre point, so Kadoma is split into Mhondoro-Ngezi, Sanyati and Kadoma Urban. The Earth Engine (GAUL) district is kept as `district_gee`.
 - Estimated yield = area × the season's benchmark (t/ha). If you edit the benchmark under Seasons, every field is recalculated.

@@ -13,7 +13,7 @@
   function fmtDate(d) { if (!d) return '—'; var x = new Date(d + 'T00:00:00'); return x.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
   function compact(n) { return n >= 1e6 ? nf1.format(n / 1e6) + ' M' : n >= 1e4 ? nf1.format(n / 1e3) + ' k' : nf0.format(n); }
 
-  var COLORS = { field: '#34d058', fieldLine: '#0c5c25', heatHi: '#e9f99d', gold: '#e5b83b', green: '#1f7a3f', greenSoft: '#5aa86f' };
+  var COLORS = { field: '#34d058', fieldLine: '#0c5c25', gold: '#e5b83b', green: '#1f7a3f', greenSoft: '#5aa86f' };
 
   var state = {
     meta: null,
@@ -102,7 +102,7 @@
   function bindFilters() {
     $('#seasonSel').addEventListener('change', function () {
       resetFilterInputs();
-      loadMeta(this.value).then(function () { fitSeason(); refresh(false); return loadPoints(); }).catch(showError);
+      loadMeta(this.value).then(function () { addSeasonImagery(); fitSeason(); refresh(false); return loadPoints(); }).catch(showError);
     });
     $('#districtSearch').addEventListener('input', renderDistrictList);
     $('#districtList').addEventListener('change', function (e) {
@@ -299,6 +299,7 @@
         ]
       }
     });
+    P.map = map; // handy for debugging in the browser console
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), 'top-left');
     map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
     map.addControl(new maplibregl.FullscreenControl(), 'top-left');
@@ -314,18 +315,17 @@
         map.addSource('training', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
         map.addSource('selected', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
 
+        addSeasonImagery();
         map.addLayer({ id: 'district-fill', type: 'fill', source: 'districts', paint: {
           'fill-color': '#ffffff', 'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.08, 0] } });
-        map.addLayer({ id: 'heat', type: 'heatmap', source: 'points', maxzoom: 11, paint: {
-          'heatmap-weight': ['interpolate', ['linear'], ['get', 'a'], 0, 0.03, 2, 0.25, 10, 1],
-          'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 5, 0.25, 8, 0.6, 10, 1.4],
-          'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 5, 2, 8, 6, 10, 12],
-          'heatmap-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0.8, 10.5, 0],
-          'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)', 0.08, 'rgba(26,152,80,0.45)', 0.3, 'rgba(47,191,85,0.8)', 0.6, '#6fdc5a', 0.85, '#b9ef5f', 1, '#f3f9a6'] } });
-        map.addLayer({ id: 'points', type: 'circle', source: 'points', minzoom: 8, maxzoom: POLY_ZOOM, paint: {
+        // Fields are visible at every zoom: dots below POLY_ZOOM, real outlines above it
+        map.addLayer({ id: 'points', type: 'circle', source: 'points', maxzoom: POLY_ZOOM, paint: {
           'circle-color': COLORS.field,
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, ['max', 1.2, ['*', 0.9, ['sqrt', ['get', 'a']]]], 11.5, ['max', 2.5, ['*', 2.6, ['sqrt', ['get', 'a']]]]],
-          'circle-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0, 9, 0.9],
+          'circle-radius': ['interpolate', ['linear'], ['zoom'],
+            5, ['max', 0.6, ['*', 0.25, ['sqrt', ['get', 'a']]]],
+            8, ['max', 1.1, ['*', 0.8, ['sqrt', ['get', 'a']]]],
+            11.5, ['max', 2.5, ['*', 2.6, ['sqrt', ['get', 'a']]]]],
+          'circle-opacity': 0.9,
           'circle-stroke-color': '#0b3d1a', 'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 9, 0, 11, 0.6] } });
         map.addLayer({ id: 'polys-fill', type: 'fill', source: 'polys', minzoom: POLY_ZOOM - 0.01, paint: { 'fill-color': COLORS.field, 'fill-opacity': 0.8 } });
         map.addLayer({ id: 'polys-line', type: 'line', source: 'polys', minzoom: 13, paint: { 'line-color': COLORS.fieldLine, 'line-width': 0.8 } });
@@ -339,6 +339,9 @@
         map.addLayer({ id: 'selected-line', type: 'line', source: 'selected', paint: { 'line-color': '#ffe14d', 'line-width': 3 } });
 
         bindMapEvents();
+        // Start with the attribution collapsed to the (i) button so it doesn't cover the legend
+        var attr = document.querySelector('.maplibregl-ctrl-attrib');
+        if (attr) attr.classList.remove('maplibregl-compact-show');
         resolve();
       });
     });
@@ -370,18 +373,14 @@
     map.on('zoom', function () { $('#mapHint').classList.toggle('hide', map.getZoom() >= POLY_ZOOM); });
 
     $$('#layerPanel [data-base]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        $$('#layerPanel [data-base]').forEach(function (x) { x.classList.toggle('on', x === b); });
-        var sat = b.dataset.base === 'satellite';
-        map.setLayoutProperty('satellite', 'visibility', sat ? 'visible' : 'none');
-        map.setLayoutProperty('labels', 'visibility', sat ? 'visible' : 'none');
-        map.setLayoutProperty('streets', 'visibility', sat ? 'none' : 'visible');
-      });
+      b.addEventListener('click', function () { setBasemap(b.dataset.base); });
     });
+    var saveBtn = $('#saveView');
+    if (saveBtn) saveBtn.addEventListener('click', saveDefaultView);
     $$('#layerPanel [data-layer]').forEach(function (cb) {
       cb.addEventListener('change', function () {
         var vis = cb.checked ? 'visible' : 'none';
-        ({ fields: ['points', 'polys-fill', 'polys-line'], heat: ['heat'], districts: ['district-line'], training: ['training'] })[cb.dataset.layer].forEach(function (l) { map.setLayoutProperty(l, 'visibility', vis); });
+        ({ fields: ['points', 'polys-fill', 'polys-line'], districts: ['district-line'], training: ['training'] })[cb.dataset.layer].forEach(function (l) { map.setLayoutProperty(l, 'visibility', vis); });
         if (cb.dataset.layer === 'training') {
           $('.leg-training').hidden = !cb.checked;
           if (cb.checked) loadTraining();
@@ -433,7 +432,6 @@
     if (!map || !map.getLayer('points')) return;
     var f = mapFilterExpr();
     map.setFilter('points', f);
-    map.setFilter('heat', f);
     var d = selectedDistricts();
     map.setPaintProperty('district-line', 'line-opacity', d ? ['case', ['in', ['get', 'name'], ['literal', d]], 1, 0.3] : 0.55);
   }
@@ -454,7 +452,7 @@
       .then(function (g) {
         if (seq !== polySeq) return;
         map.getSource('polys').setData(g);
-        $('#mapHint').textContent = g.truncated ? 'Showing the 8,000 largest fields in view — zoom in to see all' : 'Zoom in to see individual field outlines';
+        $('#mapHint').textContent = g.truncated ? 'Showing the 8,000 largest fields in view — zoom in to see all' : 'Zoom in to see field outlines';
         $('#mapHint').classList.toggle('hide', !g.truncated);
       })
       .catch(function (e) { if (e.name !== 'AbortError') showError(e); })
@@ -467,9 +465,53 @@
     return b[0] <= b[2] ? b : null;
   }
 
+  /* Season imagery: Sentinel-2 composite for the season's dates (XYZ tiles exported from Earth Engine) */
+  function addSeasonImagery() {
+    var s = state.meta && state.meta.season;
+    if (map.getLayer('season-imagery')) map.removeLayer('season-imagery');
+    if (map.getSource('season-imagery')) map.removeSource('season-imagery');
+    var has = !!(s && s.basemap_url);
+    $('#baseSeason').hidden = !has;
+    if (has) {
+      map.addSource('season-imagery', { type: 'raster', tileSize: 256, tiles: [s.basemap_url], minzoom: 0, maxzoom: s.basemap_maxzoom || 15,
+        attribution: 'Contains modified Copernicus Sentinel-2 data' });
+      map.addLayer({ id: 'season-imagery', type: 'raster', source: 'season-imagery', layout: { visibility: 'none' } }, map.getLayer('district-fill') ? 'district-fill' : undefined);
+    }
+    setBasemap(has ? 'season' : 'satellite');
+  }
+
+  function setBasemap(name) {
+    if (name === 'season' && !map.getLayer('season-imagery')) name = 'satellite';
+    $$('#layerPanel [data-base]').forEach(function (x) { x.classList.toggle('on', x.dataset.base === name); });
+    // Esri satellite stays underneath the season imagery to fill gaps outside the composite
+    map.setLayoutProperty('satellite', 'visibility', name === 'streets' ? 'none' : 'visible');
+    map.setLayoutProperty('streets', 'visibility', name === 'streets' ? 'visible' : 'none');
+    if (map.getLayer('season-imagery')) map.setLayoutProperty('season-imagery', 'visibility', name === 'season' ? 'visible' : 'none');
+    if (map.getLayer('labels')) map.setLayoutProperty('labels', 'visibility', name === 'streets' ? 'none' : 'visible');
+    var cap = $('#imageryCaption');
+    var s = state.meta && state.meta.season;
+    cap.textContent = name === 'season' ? 'Imagery: Sentinel-2, ' + fmtDate(s.start_date) + ' – ' + fmtDate(s.end_date)
+      : name === 'satellite' ? 'Imagery: Esri World Imagery (not season-specific)' : 'Streets: OpenStreetMap';
+  }
+
   function fitSeason() {
+    var v = state.meta.season.default_view;
+    if (v && v.zoom) { map.jumpTo({ center: [v.lon, v.lat], zoom: v.zoom }); return; }
     var b = state.meta.bounds;
     if (b) map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 30, duration: 600 });
+  }
+
+  function saveDefaultView() {
+    var c = map.getCenter();
+    var fd = new FormData();
+    fd.append('season', state.season); fd.append('lon', c.lng.toFixed(6)); fd.append('lat', c.lat.toFixed(6)); fd.append('zoom', map.getZoom().toFixed(2));
+    fetch(P.base + 'api/season_view.php', { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content } })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.error) throw new Error(j.error);
+        state.meta.season.default_view = j.view;
+        var b = $('#saveView'); b.textContent = '✓ Saved as default view'; setTimeout(function () { b.textContent = 'Set as default view'; }, 2500);
+      }).catch(showError);
   }
 
   function fitSelection() {
@@ -523,6 +565,6 @@
   var mapReady = initMap();
   loadMeta(state.season).then(function () {
     refresh(false);
-    return mapReady.then(function () { fitSeason(); return loadPoints(); });
+    return mapReady.then(function () { addSeasonImagery(); fitSeason(); return loadPoints(); });
   }).catch(showError);
 })();

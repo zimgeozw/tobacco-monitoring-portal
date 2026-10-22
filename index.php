@@ -104,13 +104,14 @@ if (!$seasons): ?>
       <div id="map" aria-label="Map of detected tobacco fields"></div>
       <div class="map-panel" id="layerPanel">
         <div class="seg" role="radiogroup" aria-label="Basemap">
+          <button type="button" data-base="season" id="baseSeason" hidden title="Sentinel-2 imagery for this season's dates">Season</button>
           <button type="button" class="on" data-base="satellite">Satellite</button>
           <button type="button" data-base="streets">Streets</button>
         </div>
         <label class="check sm"><input type="checkbox" data-layer="fields" checked> Tobacco fields</label>
-        <label class="check sm"><input type="checkbox" data-layer="heat" checked> Density heatmap</label>
         <label class="check sm"><input type="checkbox" data-layer="districts" checked> District boundaries</label>
         <label class="check sm" id="trainingToggle" hidden><input type="checkbox" data-layer="training"> Training points</label>
+        <?php if (is_admin()): ?><button type="button" class="btn sm" id="saveView" title="Users will open the map at the current position and zoom">Set as default view</button><?php endif; ?>
       </div>
       <div class="map-legend" id="legend">
         <div><span class="sw sw-field"></span>Detected tobacco</div>
@@ -118,7 +119,8 @@ if (!$seasons): ?>
         <div class="leg-training" hidden><span class="dot dot-t"></span>Tobacco point <span class="dot dot-n"></span>Non-tobacco point</div>
         <div><span class="sw sw-prov"></span>Province</div>
       </div>
-      <div class="map-hint" id="mapHint">Zoom in to see individual field outlines</div>
+      <div class="map-hint" id="mapHint">Zoom in to see field outlines</div>
+      <div class="map-caption" id="imageryCaption"></div>
       <div class="map-loading" id="mapLoading">Loading fields…</div>
     </section>
 
